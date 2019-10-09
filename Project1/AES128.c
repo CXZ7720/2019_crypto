@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "AES128.h"
 
 #define KEY_SIZE 16
@@ -77,8 +78,68 @@ BYTE shiftMatrix(BYTE * mat, int from){
     }
     move = from;
     for (int j = 0; j < BLOCK_SIZE/4; j++) {
-        *(mat + move) = temp_mat[i];
+        *(mat + move) = temp_mat[j];
         move += 4;
+    }
+
+}
+BYTE baseMat[4][4] = {
+        {2,3,1,1,},
+        {1,2,3,1},
+        {1,1,2,3},
+        {3,1,1,2}
+};
+
+BYTE inversebaseMat[4][4] = {
+    {0x0e, 0x0b, 0x0d, 0x09},
+    {0x09, 0x0e, 0x0b, 0x0d},
+    {0x0d, 0x09, 0x0e, 0x0b},
+    {0x0b, 0x0d, 0x09, 0x0e}
+};
+
+BYTE xtime(x){
+    return ((x<<1) ^ (((x>>7) & 1) * 0x1b));
+}
+#define GF8(x,y) (((y & 1) * x) ^ ((y>>1 & 1) * xtime(x)) ^ \
+((y>>2 & 1) * xtime(xtime(x))) ^ ((y>>3 & 1) * xtime(xtime(xtime(x)))) ^ \
+((y>>4 & 1) * xtime(xtime(xtime(xtime(x))))))
+//GF(2^8) = x^8 + x^4 + x^3 + x + 1 연산을 수행.
+
+
+BYTE unitMult(BYTE a, BYTE b){
+    switch(a){
+        case 2:
+            b = xtime(b);
+        case 3:
+            b = b ^ xtime(b);
+        case 4:
+            b = GF8(a,b);
+    }
+    return b;
+}
+
+BYTE matrixMult(BYTE * matrix, BYTE targetMatrix[4][4]){
+    BYTE result[16];
+    BYTE calc[4][4];
+    int idx;
+    int i, j;
+
+    memset(result, 0, sizeof(BYTE)*BLOCK_SIZE); //리턴배열 초기화
+    memcpy(calc, targetMatrix, sizeof(BYTE)*BLOCK_SIZE);//파라미터로 가져온 배열 준비
+
+    for (i = 0; i < BLOCK_SIZE/4; i++) {
+        for (j = 0; j < BLOCK_SIZE/4; j++) {
+            result[i+j*(BLOCK_SIZE/4)] =\
+            unitMult(calc[j][0], *(matrix + i * (BLOCK_SIZE/4) + 0)) ^ \
+            unitMult(calc[j][1], *(matrix + i * (BLOCK_SIZE/4) + 1)) ^ \
+            unitMult(calc[j][2], *(matrix + i * (BLOCK_SIZE/4) + 2)) ^ \
+            unitMult(calc[j][3], *(matrix + i * (BLOCK_SIZE/4) + 3));
+        }
+        
+    }
+
+    for (idx = 0;  idx< BLOCK_SIZE; idx++) {
+        *(matrix + idx) = result[idx];
     }
 
 }
@@ -150,7 +211,7 @@ BYTE* shiftRows(BYTE *block, int mode){
         case ENC:
             /* 추가 구현 */
             for (int i = 0; i < BLOCK_SIZE/4; i++) {
-                matrixShift(block, i);
+                shiftMatrix(block, i);
             }
 
             break;
@@ -188,12 +249,14 @@ BYTE* mixColumns(BYTE *block, int mode){
         case ENC:
             
             /* 추가 구현 */
+            matrixMult(block, baseMat);
             
             break;
 
         case DEC:
 
             /* 추가 구현 */
+            matrixMult(block, inversebaseMat);
             
             break;
 
