@@ -43,6 +43,20 @@ BYTE S_BOX[256] = {
 
 BYTE insBox[256];
 
+BYTE  Rcon[10][4] = {
+        {0x01, 0x00, 0x00, 0x00},
+        {0x02, 0x00, 0x00, 0x00},
+        {0x04, 0x00, 0x00, 0x00},
+        {0x08, 0x00, 0x00, 0x00},
+        {0x10, 0x00, 0x00, 0x00},
+        {0x20, 0x00, 0x00, 0x00},
+        {0x40, 0x00, 0x00, 0x00},
+        {0x80, 0x00, 0x00, 0x00},
+        {0x1b, 0x00, 0x00, 0x00},
+        {0x36, 0x00, 0x00, 0x00},
+};
+
+
 /* 기타 필요한 함수 추가 선언 및 정의 */
 BYTE findSboxVal(int num, int mode){
     for (int i = 0; i < 256; i++) {
@@ -97,7 +111,7 @@ BYTE inversebaseMat[4][4] = {
     {0x0b, 0x0d, 0x09, 0x0e}
 };
 
-BYTE xtime(x){
+BYTE xtime(BYTE x){
     return ((x<<1) ^ (((x>>7) & 1) * 0x1b));
 }
 #define GF8(x,y) (((y & 1) * x) ^ ((y>>1 & 1) * xtime(x)) ^ \
@@ -144,6 +158,28 @@ BYTE matrixMult(BYTE * matrix, BYTE targetMatrix[4][4]){
 
 }
 
+BYTE * rotationWord(BYTE *word){
+    BYTE temp = word[0];
+    word[0] = word[1];
+    word[1] = word[2];
+    word[2] = word[3];
+    word[3] = temp;
+
+    return word;
+}
+
+void subByte(BYTE * word){
+    for (int i = 0; i < BLOCK_SIZE/4; i++) {
+        *(word + i) = S_BOX[word[i]];
+    }
+}
+
+void xorword(BYTE * word, BYTE * rword, BYTE * temp){
+    for (int i = 0; i < BLOCK_SIZE/4; i++) {
+        *(word+i) = *(rword+i) ^ *(temp+i);
+    }
+}
+
 
 /*  <키스케줄링 함수>
  *   
@@ -153,8 +189,45 @@ BYTE matrixMult(BYTE * matrix, BYTE targetMatrix[4][4]){
 void expandKey(BYTE *key, BYTE *roundKey){
 
     /* 추가 구현 */
-    BYTE temp;
-    memcpy(roundKey,key, sizeof(BYTE)*BLOCK_SIZE);
+    BYTE temp[4];
+
+    for (int i = 0; i < BLOCK_SIZE/4 ; ++i) {
+        roundKey[(i * 4) + 0] = key[(i * 4) + 0];
+        roundKey[(i * 4) + 1] = key[(i * 4) + 1];
+        roundKey[(i * 4) + 2] = key[(i * 4) + 2];
+        roundKey[(i * 4) + 3] = key[(i * 4) + 3];
+    }
+
+    for (int i = BLOCK_SIZE / 4; i < (BLOCK_SIZE/4)*(sizeof(Rcon)/ sizeof(BYTE) + 1); i++){
+        int k = (i - 1) * 4;
+
+        temp[0] = roundKey[k + 0];
+        temp[1] = roundKey[k + 1];
+        temp[2] = roundKey[k + 2];
+        temp[3] = roundKey[k + 3];
+
+        subByte(rotationWord(temp));
+
+        int j = i * 4;
+        int t = (i - BLOCK_SIZE/4)*4;
+        roundKey[j + 0] = roundKey[k + 0] ^ temp[0];
+        roundKey[j + 1] = roundKey[k + 1] ^ temp[1];
+        roundKey[j + 2] = roundKey[k + 2] ^ temp[2];
+        roundKey[j + 3] = roundKey[k + 3] ^ temp[3];
+
+    }
+
+
+//    memcpy(roundKey,key, sizeof(BYTE)*BLOCK_SIZE);
+//    for (int i = BLOCK_SIZE; i < ROUNDKEY_SIZE; i+=(BLOCK_SIZE/4)) {
+//        memcpy(temp,roundKey + i - (BLOCK_SIZE/4), BLOCK_SIZE/4);
+//        if(i % BLOCK_SIZE == 0){ //1블록단위일 때 마다
+//            subByte(rotationWord(temp)); //1칸씩 밀어내기
+//            temp[0] = temp[0] ^ Rcon[i/BLOCK_SIZE]; //XOR 연산
+//        }
+//        xorword(roundKey + i, roundKey + i - BLOCK_SIZE, temp); //XOR 연산
+//    }
+
 
 }
 
@@ -275,6 +348,10 @@ BYTE* mixColumns(BYTE *block, int mode){
  */
 BYTE* addRoundKey(BYTE *block, BYTE *rKey){
     /* 추가 구현 */
+
+    for (int i = 0; i < BLOCK_SIZE; i++) {
+        *(block + i) = *(block + i) ^ *(rKey + i);
+    }
     return block;
 }
 
@@ -294,14 +371,38 @@ BYTE* addRoundKey(BYTE *block, BYTE *rKey){
  */
  
 void AES128(BYTE *input, BYTE *result, BYTE *key, int mode){
+    BYTE roundKey[ROUNDKEY_SIZE];
+    expandKey(key, roundKey);
 
     if(mode == ENC){
 
-        /* 추가 작업이 필요하다 생각하면 추가 구현 */    
+        /* 추가 작업이 필요하다 생각하면 추가 구현 */
+        addRoundKey(input, roundKey);
+        for (int i = 1; i <= 9; i++) {//9라운드까지
+            subBytes(input, mode);
+            shiftRows(input, mode);
+            mixColumns(input, mode);
+            addRoundKey(input, roundKey + BLOCK_SIZE * 10);
+        }
+        subBytes(input, mode);
+        shiftRows(input, mode);
+        addRoundKey(input, roundKey);
+
 
     }else if(mode == DEC){
 
-        /* 추가 작업이 필요하다 생각하면 추가 구현 */    
+        /* 추가 작업이 필요하다 생각하면 추가 구현 */
+        addRoundKey(input, roundKey);
+        for(int i = 1; i <= 9; i++){
+            subBytes(input, mode);
+            shiftRows(input, mode);
+            mixColumns(input, mode);
+            mixColumns(roundKey + ((sizeof(Rcon)/sizeof(BYTE) - i) * BLOCK_SIZE), mode);
+            addRoundKey(input, roundKey + (((sizeof(Rcon)/sizeof(BYTE) - i) * BLOCK_SIZE)));
+        }
+        subBytes(input, mode);
+        shiftRows(input, mode);
+        addRoundKey(input, roundKey);
 
     }else{
         fprintf(stderr, "Invalid mode!\n");
