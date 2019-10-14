@@ -191,42 +191,20 @@ void expandKey(BYTE *key, BYTE *roundKey){
     /* 추가 구현 */
     BYTE temp[4];
 
-    for (int i = 0; i < BLOCK_SIZE/4 ; ++i) {
-        roundKey[(i * 4) + 0] = key[(i * 4) + 0];
-        roundKey[(i * 4) + 1] = key[(i * 4) + 1];
-        roundKey[(i * 4) + 2] = key[(i * 4) + 2];
-        roundKey[(i * 4) + 3] = key[(i * 4) + 3];
-    }
-
-    for (int i = BLOCK_SIZE / 4; i < (BLOCK_SIZE/4)*(sizeof(Rcon)/ sizeof(BYTE) + 1); i++){
-        int k = (i - 1) * 4;
-
-        temp[0] = roundKey[k + 0];
-        temp[1] = roundKey[k + 1];
-        temp[2] = roundKey[k + 2];
-        temp[3] = roundKey[k + 3];
-
-        subByte(rotationWord(temp));
-
-        int j = i * 4;
-        int t = (i - BLOCK_SIZE/4)*4;
-        roundKey[j + 0] = roundKey[k + 0] ^ temp[0];
-        roundKey[j + 1] = roundKey[k + 1] ^ temp[1];
-        roundKey[j + 2] = roundKey[k + 2] ^ temp[2];
-        roundKey[j + 3] = roundKey[k + 3] ^ temp[3];
-
-    }
-
-
-//    memcpy(roundKey,key, sizeof(BYTE)*BLOCK_SIZE);
-//    for (int i = BLOCK_SIZE; i < ROUNDKEY_SIZE; i+=(BLOCK_SIZE/4)) {
-//        memcpy(temp,roundKey + i - (BLOCK_SIZE/4), BLOCK_SIZE/4);
-//        if(i % BLOCK_SIZE == 0){ //1블록단위일 때 마다
-//            subByte(rotationWord(temp)); //1칸씩 밀어내기
-//            temp[0] = temp[0] ^ Rcon[i/BLOCK_SIZE]; //XOR 연산
-//        }
-//        xorword(roundKey + i, roundKey + i - BLOCK_SIZE, temp); //XOR 연산
+    memcpy(roundKey, key, sizeof(BYTE)*BLOCK_SIZE);
+    for (int i = BLOCK_SIZE; i < ROUNDKEY_SIZE; i+=(BLOCK_SIZE/4)) {
+        memcpy(temp, roundKey + i - (BLOCK_SIZE / 4), BLOCK_SIZE / 4); //마지막 4바이트 추출해 temp 에 저장
+        if (i % BLOCK_SIZE == 0) { //1블록단위일 때 마다
+            subByte(rotationWord(temp)); //1칸씩 밀어내기
+            for (int j = 0; j < 4; ++j) {
+                temp[j] = temp[j] ^ Rcon[i / BLOCK_SIZE][j]; //XOR 연산
+//                printf("%x/", temp[j]);
+//                printf("%X/\n",Rcon[i/BLOCK_SIZE][j]);
+            }
+        }
+        xorword(roundKey + i, roundKey + i - BLOCK_SIZE, temp); //XOR 연산
 //    }
+    }
 
 
 }
@@ -387,7 +365,7 @@ void AES128(BYTE *input, BYTE *result, BYTE *key, int mode){
         subBytes(input, mode);
         shiftRows(input, mode);
         addRoundKey(input, roundKey);
-
+        memcpy(result, input, sizeof(BYTE)*BLOCK_SIZE);
 
     }else if(mode == DEC){
 
@@ -403,7 +381,7 @@ void AES128(BYTE *input, BYTE *result, BYTE *key, int mode){
         subBytes(input, mode);
         shiftRows(input, mode);
         addRoundKey(input, roundKey);
-
+        memcpy(result, input, sizeof(BYTE)*BLOCK_SIZE);
     }else{
         fprintf(stderr, "Invalid mode!\n");
         exit(1);
